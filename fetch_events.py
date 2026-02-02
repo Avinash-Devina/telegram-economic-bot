@@ -2,20 +2,26 @@ import os
 import requests
 from datetime import datetime, timedelta, timezone
 
+# --- ENV ---
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 FEED_URL = os.environ["FEED_URL"]
 
-# Timezones
+# --- TIMEZONES ---
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# Filters
+# --- FILTERS ---
 ALLOWED_IMPACT = {"High", "Medium"}
 ALLOWED_COUNTRY = {"USD", "CNY"}
 
-# Alert window (minutes before event)
-ALERT_MIN = 1200
-ALERT_MAX = 1800
+# --- ALERT WINDOW (minutes before event) ---
+# Production:
+# ALERT_MIN = 10
+# ALERT_MAX = 20
+
+# Testing (20–30 hours before) → COMMENT OUT AFTER TESTING
+ALERT_MIN = 20 * 60   # 20 hours
+ALERT_MAX = 30 * 60   # 30 hours
 
 def send(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -29,6 +35,7 @@ def send(msg):
         timeout=20
     ).raise_for_status()
 
+# Fetch Forex Factory weekly feed
 events = requests.get(FEED_URL, timeout=20).json()
 
 now_utc = datetime.now(timezone.utc)
@@ -69,17 +76,20 @@ for e in events:
         except ValueError:
             pass
 
-    # Skip events without a usable time
+    # Skip events without a valid time
     if event_dt_utc is None:
         continue
 
+    # Minutes remaining
     minutes_to_event = (event_dt_utc - now_utc).total_seconds() / 60
 
-    # 🔔 15-minute-before window
+    # --- 15-minute-before (windowed) ---
     if not (ALERT_MIN <= minutes_to_event <= ALERT_MAX):
         continue
 
+    # Convert to IST
     event_dt_ist = event_dt_utc.astimezone(IST)
+    minutes_left = int(round(minutes_to_event))
 
     message = (
         f"🚨 UPCOMING ECONOMIC EVENT 🚨\n\n"
@@ -87,7 +97,7 @@ for e in events:
         f"🕒 {event_dt_ist.strftime('%d %b %Y, %I:%M %p')} IST\n"
         f"🌍 {e['country']}\n"
         f"⚠️ Impact: {e['impact']}\n\n"
-        f"⏰ Releasing in ~15 minutes"
+        f"⏰ Releasing in {minutes_left} minutes"
     )
 
     send(message)
