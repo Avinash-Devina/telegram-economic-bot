@@ -6,14 +6,16 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 FEED_URL = os.environ["FEED_URL"]
 
-HOURS_AHEAD = 1  # look ahead window
-
-# IST timezone
+# Timezones
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # Filters
 ALLOWED_IMPACT = {"High", "Medium"}
 ALLOWED_COUNTRY = {"USD", "CNY"}
+
+# Alert window (minutes before event)
+ALERT_MIN = 10
+ALERT_MAX = 20
 
 def send(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -27,11 +29,9 @@ def send(msg):
         timeout=20
     ).raise_for_status()
 
-# Fetch Forex Factory weekly feed
 events = requests.get(FEED_URL, timeout=20).json()
 
 now_utc = datetime.now(timezone.utc)
-window_end = now_utc + timedelta(hours=HOURS_AHEAD)
 
 for e in events:
     # --- FILTERS ---
@@ -49,7 +49,7 @@ for e in events:
 
     event_dt_utc = None
 
-    # Case 1: ISO timestamp inside date
+    # Case 1: ISO timestamp in date
     try:
         event_dt_utc = datetime.fromisoformat(date_raw)
         if event_dt_utc.tzinfo is None:
@@ -59,7 +59,7 @@ for e in events:
     except ValueError:
         pass
 
-    # Case 2: separate date + time
+    # Case 2: date + time
     if event_dt_utc is None and time_raw and time_raw not in ("", "All Day"):
         try:
             event_dt_utc = datetime.strptime(
@@ -69,28 +69,25 @@ for e in events:
         except ValueError:
             pass
 
-    # Case 3: All Day / date-only
+    # Skip events without a usable time
     if event_dt_utc is None:
-        try:
-            event_dt_utc = datetime.strptime(
-                date_raw[:10],
-                "%Y-%m-%d"
-            ).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-
-    # Time window filter
-    if not (now_utc <= event_dt_utc <= window_end):
         continue
 
-    # Convert to IST
+    minutes_to_event = (event_dt_utc - now_utc).total_seconds() / 60
+
+    # 🔔 15-minute-before window
+    if not (ALERT_MIN <= minutes_to_event <= ALERT_MAX):
+        continue
+
     event_dt_ist = event_dt_utc.astimezone(IST)
 
     message = (
+        f"🚨 UPCOMING ECONOMIC EVENT 🚨\n\n"
         f"📊 {e['title']}\n"
         f"🕒 {event_dt_ist.strftime('%d %b %Y, %I:%M %p')} IST\n"
         f"🌍 {e['country']}\n"
-        f"⚠️ Impact: {e['impact']}"
+        f"⚠️ Impact: {e['impact']}\n\n"
+        f"⏰ Releasing in ~15 minutes"
     )
 
     send(message)
