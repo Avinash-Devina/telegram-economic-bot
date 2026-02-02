@@ -6,27 +6,32 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 FEED_URL = os.environ["FEED_URL"]
 
-HOURS_AHEAD = 24  # change if needed
+HOURS_AHEAD = 2  # look ahead window
 
+# IST timezone
 IST = timezone(timedelta(hours=5, minutes=30))
 
+# Filters
 ALLOWED_IMPACT = {"High", "Medium"}
-ALLOWED_COUNTRY = {"USD", "CNY"}  # China = CNY in FF feed
+ALLOWED_COUNTRY = {"USD", "CNY"}
 
 def send(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": msg,
-        "disable_web_page_preview": True
-    }).raise_for_status()
+    requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "disable_web_page_preview": True
+        },
+        timeout=20
+    ).raise_for_status()
 
+# Fetch Forex Factory weekly feed
 events = requests.get(FEED_URL, timeout=20).json()
 
 now_utc = datetime.now(timezone.utc)
 window_end = now_utc + timedelta(hours=HOURS_AHEAD)
-
-sent_any = False
 
 for e in events:
     # --- FILTERS ---
@@ -44,7 +49,7 @@ for e in events:
 
     event_dt_utc = None
 
-    # Case 1: ISO timestamp in date
+    # Case 1: ISO timestamp inside date
     try:
         event_dt_utc = datetime.fromisoformat(date_raw)
         if event_dt_utc.tzinfo is None:
@@ -54,7 +59,7 @@ for e in events:
     except ValueError:
         pass
 
-    # Case 2: date + time
+    # Case 2: separate date + time
     if event_dt_utc is None and time_raw and time_raw not in ("", "All Day"):
         try:
             event_dt_utc = datetime.strptime(
@@ -74,6 +79,7 @@ for e in events:
         except ValueError:
             continue
 
+    # Time window filter
     if not (now_utc <= event_dt_utc <= window_end):
         continue
 
@@ -88,7 +94,3 @@ for e in events:
     )
 
     send(message)
-    sent_any = True
-
-if not sent_any:
-    send(f"ℹ️ No High/Medium USD or China events in the next {HOURS_AHEAD} hours.")
