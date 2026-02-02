@@ -1,40 +1,54 @@
 import os
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 FEED_URL = os.environ["FEED_URL"]
 
+HOURS_AHEAD = 12  # 👈 change to 6, 24, etc.
+
 def send(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    r = requests.post(url, data={
+    requests.post(url, data={
         "chat_id": CHAT_ID,
         "text": msg,
         "disable_web_page_preview": True
-    })
-    r.raise_for_status()
+    }).raise_for_status()
 
-# Fetch feed (Forex Factory returns a LIST)
+# Fetch Forex Factory weekly feed (list)
 events = requests.get(FEED_URL, timeout=20).json()
 
-now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+now = datetime.now(timezone.utc)
+window_end = now + timedelta(hours=HOURS_AHEAD)
 
-count = 0
+sent_any = False
+
 for e in events:
-    # Only today's events
-    if e.get("date") != now_utc:
+    # Skip events without time (like "All Day")
+    if not e.get("time") or e["time"] == "":
+        continue
+
+    try:
+        event_dt = datetime.strptime(
+            f"{e['date']} {e['time']}",
+            "%Y-%m-%d %H:%M"
+        ).replace(tzinfo=timezone.utc)
+    except ValueError:
+        continue
+
+    if not (now <= event_dt <= window_end):
         continue
 
     message = (
         f"📊 {e['title']}\n"
-        f"🕒 {e['date']} {e['time']} UTC\n"
+        f"🕒 {event_dt.strftime('%Y-%m-%d %H:%M')} UTC\n"
         f"🌍 {e['country']}\n"
         f"⚠️ Impact: {e['impact']}"
     )
 
     send(message)
-    count += 1
+    sent_any = True
 
-if count == 0:
-    send("ℹ️ No economic events today.")
+if not sent_any:
+    send(f"ℹ️ No economic events in the next {HOURS_AHEAD} hours.")
