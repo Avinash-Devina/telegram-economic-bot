@@ -2,9 +2,9 @@ import os
 import requests
 import hashlib
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
-FEED_URL = os.environ["FEED_URL"]
+BOT_TOKEN = os.environ["8211906927:AAEuqveIbJyinxuWQ_FqLb_KwLqaRXKgyO0"]
+CHAT_ID = os.environ["7920132476"]
+FEED_URL = os.environ["https://nfs.faireconomy.media/ff_calendar_thisweek.json"]
 
 def send(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
