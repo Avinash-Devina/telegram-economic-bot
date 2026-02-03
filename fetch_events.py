@@ -17,7 +17,7 @@ ALLOWED_COUNTRY = {"USD", "CNY"}
 
 # --- ALERT WINDOW (minutes before event) ---
 ALERT_MIN = 10
-ALERT_MAX = 2000
+ALERT_MAX = 20
 
 def send(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
