@@ -18,7 +18,7 @@ ALLOWED_COUNTRY = {"USD", "CNY"}
 # --- ALERT WINDOW (minutes before event) ---
 # PRODUCTION (recommended)
 ALERT_MIN = 10
-ALERT_MAX = 20
+ALERT_MAX = 2000
 
 # ---- TESTING EXAMPLE (comment out in prod) ----
 # ALERT_MIN = 1000
