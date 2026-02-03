@@ -16,13 +16,8 @@ ALLOWED_IMPACT = {"High", "Medium"}
 ALLOWED_COUNTRY = {"USD", "CNY"}
 
 # --- ALERT WINDOW (minutes before event) ---
-# PRODUCTION (recommended)
 ALERT_MIN = 10
 ALERT_MAX = 2000
-
-# ---- TESTING EXAMPLE (comment out in prod) ----
-# ALERT_MIN = 1000
-# ALERT_MAX = 2000
 
 def send(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -36,13 +31,11 @@ def send(msg):
         timeout=20
     ).raise_for_status()
 
-# Fetch Forex Factory weekly feed
 events = requests.get(FEED_URL, timeout=20).json()
-
 now_utc = datetime.now(UTC)
 
 for e in events:
-    # --- BASIC FILTERS ---
+    # --- FILTERS ---
     if e.get("impact") not in ALLOWED_IMPACT:
         continue
 
@@ -55,56 +48,62 @@ for e in events:
     if not date_raw:
         continue
 
-    event_dt_utc = None
+    # Tentative detection
+    is_tentative = not time_raw or time_raw in ("", "Tentative", "All Day")
 
-    # ✅ PRIMARY: use scheduled date + time (authoritative)
-    if time_raw and time_raw not in ("", "All Day"):
+    # -----------------------------
+    # TENTATIVE EVENT (alert, no time)
+    # -----------------------------
+    if is_tentative:
         try:
-            event_dt_utc = datetime.strptime(
-                f"{date_raw[:10]} {time_raw}",
-                "%Y-%m-%d %H:%M"
-            ).replace(tzinfo=UTC)
-        except ValueError:
-            pass
-
-    # ⛑️ FALLBACK: ISO timestamp only if no time exists
-    if event_dt_utc is None:
-        try:
-            iso_dt = datetime.fromisoformat(date_raw)
-            if iso_dt.tzinfo:
-                event_dt_utc = iso_dt.astimezone(UTC)
-            else:
-                event_dt_utc = iso_dt.replace(tzinfo=UTC)
+            event_date = datetime.strptime(
+                date_raw[:10], "%Y-%m-%d"
+            ).date()
         except ValueError:
             continue
 
-    # Minutes until event
+        message = (
+            f"🚨 UPCOMING ECONOMIC EVENT 🚨\n\n"
+            f"📊 {e['title']}\n"
+            f"🕒 {event_date.strftime('%d %b %Y')} – Tentative\n"
+            f"⏰ Time not updated\n"
+            f"🌍 {e['country']}\n"
+            f"⚠️ Impact: {e['impact']}"
+        )
+
+        send(message)
+        continue
+
+    # -----------------------------
+    # CONFIRMED EVENT (time + countdown)
+    # -----------------------------
+    try:
+        event_dt_utc = datetime.strptime(
+            f"{date_raw[:10]} {time_raw}",
+            "%Y-%m-%d %H:%M"
+        ).replace(tzinfo=UTC)
+    except ValueError:
+        continue
+
     minutes_to_event = (event_dt_utc - now_utc).total_seconds() / 60
 
-    # --- ALERT WINDOW CHECK ---
     if not (ALERT_MIN <= minutes_to_event <= ALERT_MAX):
         continue
 
-    # Convert to IST
     event_dt_ist = event_dt_utc.astimezone(IST)
 
-    # Human-friendly countdown
     total_minutes = int(round(minutes_to_event))
     hours = total_minutes // 60
     minutes = total_minutes % 60
-
-    if hours > 0:
-        countdown = f"{hours}h {minutes}m"
-    else:
-        countdown = f"{minutes}m"
+    countdown = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
 
     message = (
         f"🚨 UPCOMING ECONOMIC EVENT 🚨\n\n"
         f"📊 {e['title']}\n"
         f"🕒 {event_dt_ist.strftime('%d %b %Y, %I:%M %p')} IST\n"
+        f"⏰ Releasing in {countdown}\n"
         f"🌍 {e['country']}\n"
-        f"⚠️ Impact: {e['impact']}\n\n"
-        f"⏰ Releasing in {countdown}"
+        f"⚠️ Impact: {e['impact']}"
     )
 
     send(message)
